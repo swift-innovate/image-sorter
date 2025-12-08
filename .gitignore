@@ -1,0 +1,32 @@
+# Config (contains user paths)
+config.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model cache (large files)
+*.bin
+*.safetensors
+
+# Reports (generated)
+image_sorter_*.html
+
+# Test images
+test_images/
