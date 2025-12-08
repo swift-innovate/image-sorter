@@ -1,0 +1,168 @@
+# ============================================================
+# Image Sorter Configuration
+# Copyright (c) 2025 Swift Innovate - MIT License
+# https://github.com/swift-innovate/image-sorter
+# ============================================================
+# Copy this file to config.yaml and edit with your paths
+# ============================================================
+
+# Source folder - where to scan for images
+source_dir: "C:\\Users\\YourName\\Downloads"
+
+# Destination folder - where sorted images go (subfolders created per category)
+dest_dir: "C:\\Users\\YourName\\Pictures\\Sorted"
+
+# ============================================================
+# UI Settings
+# ============================================================
+
+# Images per page in review mode
+page_size: 15
+
+# Max filename length (Windows path limit protection)
+max_filename_length: 120
+
+# ============================================================
+# Categories
+# ============================================================
+# Each category has:
+#   - keywords: words to look for in AI-generated captions
+#   - patterns: patterns to match in original filenames
+#
+# Images are scored against all categories, highest score wins
+# "Misc" is the fallback for uncategorized images
+
+categories:
+  Screenshots:
+    keywords: 
+      - screenshot
+      - screen
+      - desktop
+      - window
+      - browser
+      - code
+      - terminal
+      - interface
+      - menu
+      - dialog
+    patterns:
+      - Screenshot
+      - Capture
+      - Snip
+      - Screen Shot
+
+  Photos:
+    keywords:
+      - photo
+      - photograph
+      - portrait
+      - landscape
+      - nature
+      - selfie
+      - people
+      - outdoor
+      - indoor
+    patterns:
+      - IMG_
+      - DSC
+      - DCIM
+      - PXL_
+      - Photo
+
+  AI_Generated:
+    keywords:
+      - digital art
+      - fantasy
+      - surreal
+      - cyberpunk
+      - sci-fi
+      - concept art
+      - illustration
+      - render
+      - artistic
+    patterns:
+      - DALL
+      - Midjourney
+      - Stable
+      - ComfyUI
+      - ChatGPT Image
+      - HiDream
+      - Gemini_Generated
+
+  Memes:
+    keywords:
+      - meme
+      - funny
+      - comic
+      - cartoon
+      - reaction
+      - humor
+    patterns:
+      - meme
+      - reaction
+      - funny
+
+  Documents:
+    keywords:
+      - document
+      - text
+      - chart
+      - graph
+      - diagram
+      - table
+      - spreadsheet
+      - form
+    patterns:
+      - doc
+      - scan
+      - pdf
+      - form
+
+  Icons_Logos:
+    keywords:
+      - icon
+      - logo
+      - symbol
+      - badge
+      - emblem
+      - brand
+    patterns:
+      - icon
+      - logo
+      - favicon
+      - badge
+
+  Wallpapers:
+    keywords:
+      - wallpaper
+      - background
+      - panorama
+      - scenic
+      - landscape
+    patterns:
+      - wallpaper
+      - background
+      - 1920
+      - 4k
+
+  Misc:
+    keywords: []
+    patterns: []
+
+# ============================================================
+# Generic Filename Patterns (regex)
+# ============================================================
+# Files matching these patterns get fully renamed with AI caption
+# Files NOT matching keep their original name + AI enhancement
+
+generic_patterns:
+  - '^IMG[_-]?\d+'
+  - '^DSC[_-]?\d+'
+  - '^Screenshot[_ ]?\d*'
+  - '^PXL_\d+'
+  - '^\d+$'
+  - '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+  - '^[a-f0-9]{32,}$'
+  - '^image[_ ]?\(\d+\)$'
+  - '^download[_ ]?\(\d+\)$'
+  - '^\d{10,}'

@@ -1,0 +1,19 @@
+# Image Sorter Dependencies
+# Install with: pip install -r requirements.txt
+
+# PyTorch with CUDA support
+# For CUDA 12.6: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+torch>=2.6.0
+torchvision
+
+# AI Model
+transformers>=4.30.0
+
+# Image processing
+Pillow>=9.0.0
+
+# Config
+pyyaml>=6.0
+
+# Optional: For --review mode (interactive UI)
+# pip install gradio>=4.0.0
