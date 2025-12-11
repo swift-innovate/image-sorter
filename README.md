@@ -1,8 +1,8 @@
 # 🖼️ Image Sorter
 
-**AI-powered local image organization using BLIP captioning**
+**AI-powered local image organization using Qwen2.5-VL**
 
-Automatically analyze, categorize, and rename images from your Downloads folder using a local AI model. No cloud APIs, no privacy concerns, runs entirely on your GPU.
+Automatically analyze, categorize, and rename images from your Downloads folder using a local vision-language AI model. No cloud APIs, no privacy concerns, runs entirely on your GPU.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -10,12 +10,13 @@ Automatically analyze, categorize, and rename images from your Downloads folder 
 
 ## ✨ Features
 
-- **🧠 AI-Powered Captioning** - Uses Salesforce BLIP model to understand image content
+- **🧠 High-Quality Captions** - Qwen2.5-VL-3B for detailed, context-aware descriptions
 - **🔒 Privacy-First** - Runs 100% locally, no data leaves your machine
-- **⚡ GPU Accelerated** - ~0.2s per image on RTX 4080 (vs 60s+ on CPU)
+- **⚡ GPU Accelerated** - ~0.5s per image on RTX 4080
 - **📁 Smart Categorization** - Auto-sorts into Screenshots, Photos, AI_Generated, Memes, etc.
 - **📝 Intelligent Renaming** - Replaces generic names (IMG_1234) with descriptive captions
 - **📊 HTML Reports** - Beautiful reports for scheduled/automated runs
+- **🔄 Auto-Fallback** - Falls back to BLIP on GPUs with <7GB VRAM
 
 ## 🚀 Quick Start
 
@@ -65,6 +66,17 @@ python image_sorter.py --dry-run
 - Shows category breakdown
 - Test your config before committing
 
+## 🧠 Model Selection
+
+Image Sorter automatically selects the best model for your hardware:
+
+| VRAM | Model | Caption Quality |
+|------|-------|-----------------|
+| 7GB+ | Qwen2.5-VL-3B | "screenshot of VS Code with Python error in dark terminal" |
+| <7GB | BLIP (fallback) | "text on a computer screen" |
+
+No configuration needed - it just works!
+
 ## ⚙️ Configuration
 
 Edit `config.yaml` to customize:
@@ -81,13 +93,13 @@ max_filename_length: 120
 # Categories with keywords and filename patterns
 categories:
   Screenshots:
-    keywords: [screenshot, screen, desktop, code, terminal]
+    keywords: [screenshot, screen, desktop, code, terminal, interface]
     patterns: [Screenshot, Capture, Snip]
   Photos:
-    keywords: [photo, portrait, landscape, nature]
+    keywords: [photo, portrait, landscape, nature, outdoor]
     patterns: [IMG_, DSC, PXL_]
   AI_Generated:
-    keywords: [digital art, fantasy, cyberpunk, concept art]
+    keywords: [digital art, fantasy, cyberpunk, concept art, rendered]
     patterns: [DALL, Midjourney, Stable, ComfyUI]
   # ... add your own categories
 ```
@@ -95,24 +107,28 @@ categories:
 ## 🖥️ System Requirements
 
 - **Python** 3.10+
-- **CUDA** 12.x compatible GPU (8GB+ VRAM recommended)
+- **CUDA** 12.x compatible GPU
+- **VRAM** 7GB+ recommended (falls back to BLIP on less)
 - **OS** Windows 10/11, Linux, macOS
 
 ### GPU Performance (approximate)
-| GPU | Time per Image |
-|-----|----------------|
-| RTX 4080 | ~0.2s |
-| RTX 3080 | ~0.3s |
-| RTX 3060 | ~0.5s |
-| CPU (fallback) | ~60s |
+| GPU | VRAM | Model | Speed |
+|-----|------|-------|-------|
+| RTX 4080 | 16GB | Qwen-3B | ~0.5s |
+| RTX 4070 | 12GB | Qwen-3B | ~0.6s |
+| RTX 3060 | 8GB | Qwen-3B | ~0.8s |
+| GTX 1660 | 6GB | BLIP | ~0.3s |
+| CPU | - | BLIP | ~30-60s |
 
 ## 📦 Dependencies
 
-**Core (auto mode):**
+**Core:**
 ```
 torch>=2.6.0
 torchvision
-transformers>=4.30.0
+transformers>=4.45.0
+qwen-vl-utils>=0.0.8
+accelerate>=0.27.0
 Pillow>=9.0.0
 pyyaml>=6.0
 ```
@@ -128,26 +144,22 @@ pip install gradio>=4.0.0
 2. Create Basic Task → Name: "Image Sorter Weekly"
 3. Trigger: Weekly (or your preference)
 4. Action: Start a program
-   - Program: `python`
-   - Arguments: `G:\Projects\image-sorter\image_sorter.py`
-   - Start in: `G:\Projects\image-sorter`
+   - Program: `G:\Projects\image-sorter\scheduled_run.bat`
 5. Finish
 
 ## 📊 Sample Report
 
-Auto mode generates a beautiful HTML report:
-
+Auto mode generates a beautiful HTML report showing:
 - Summary stats (analyzed, moved, errors, duration)
+- Model used (Qwen or BLIP)
 - Category breakdown
 - Full file listing with original → new names
-- Error details for failed files
 
-Reports are saved to your destination folder with timestamps:
-`image_sorter_2025-12-08_143022.html`
+Reports saved to destination folder: `image_sorter_2025-12-08_143022.html`
 
 ## 🤝 Contributing
 
-Contributions welcome! Please feel free to submit issues and PRs.
+Contributions welcome! See [TODO.md](TODO.md) for improvement ideas.
 
 ## 📄 License
 
@@ -155,9 +167,10 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-- [Salesforce BLIP](https://github.com/salesforce/BLIP) for the image captioning model
-- [Gradio](https://gradio.app/) for the review UI
-- [Hugging Face](https://huggingface.co/) for model hosting
+- [Qwen2.5-VL](https://github.com/QwenLM/Qwen2-VL) - Primary vision-language model
+- [Salesforce BLIP](https://github.com/salesforce/BLIP) - Lightweight fallback model
+- [Gradio](https://gradio.app/) - Review UI framework
+- [Hugging Face](https://huggingface.co/) - Model hosting
 
 ---
 
