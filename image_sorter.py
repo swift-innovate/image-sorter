@@ -1,6 +1,6 @@
 """
 Image Sorter - AI-powered local image organization
-Uses BLIP model for privacy-first image captioning and categorization
+Uses Qwen2.5-VL for high-quality image captioning (BLIP fallback for low VRAM)
 
 Copyright (c) 2025 Swift Innovate
 MIT License - https://github.com/swift-innovate/image-sorter
@@ -21,7 +21,6 @@ import time
 import yaml
 from PIL import Image
 import torch
-from transformers import BlipProcessor, BlipForConditionalGeneration
 
 # ============================================================================
 # CONFIGURATION LOADER
@@ -89,25 +88,25 @@ max_filename_length: 120
 # Categories
 categories:
   Screenshots:
-    keywords: [screenshot, screen, desktop, window, browser, code, terminal]
+    keywords: [screenshot, screen, desktop, window, browser, code, terminal, error, ui, interface]
     patterns: [Screenshot, Capture, Snip]
   AI_Generated:
-    keywords: [digital art, fantasy, surreal, cyberpunk, sci-fi, concept art]
+    keywords: [digital art, fantasy, surreal, cyberpunk, sci-fi, concept art, rendered, illustration, artistic]
     patterns: [DALL, Midjourney, Stable, ComfyUI]
   Photos:
-    keywords: [photo, photograph, portrait, landscape, nature, selfie]
+    keywords: [photo, photograph, portrait, landscape, nature, selfie, camera, outdoor, indoor]
     patterns: [IMG_, DSC, DCIM, PXL_]
   Memes:
-    keywords: [meme, funny, comic, cartoon, reaction]
+    keywords: [meme, funny, comic, cartoon, reaction, humor, joke, text overlay]
     patterns: [meme, reaction]
   Documents:
-    keywords: [document, text, chart, graph, diagram]
+    keywords: [document, text, chart, graph, diagram, infographic, table, data, spreadsheet]
     patterns: [doc, scan, pdf]
   Icons_Logos:
-    keywords: [icon, logo, symbol, badge]
+    keywords: [icon, logo, symbol, badge, brand, emblem]
     patterns: [icon, logo, favicon]
   Wallpapers:
-    keywords: [wallpaper, background, panorama]
+    keywords: [wallpaper, background, panorama, scenic, abstract background]
     patterns: [wallpaper, background]
   Misc:
     keywords: []
@@ -120,6 +119,9 @@ generic_patterns:
   - '^Screenshot[_ ]?\\d*'
   - '^PXL_\\d+'
   - '^\\d+$'
+  - '^image[_-]?\\d*'
+  - '^photo[_-]?\\d*'
+  - '^ChatGPT.*Image'
 """
     with open(path, 'w', encoding='utf-8') as f:
         f.write(default_yaml)
@@ -159,32 +161,94 @@ class ImageAnalysis:
     
     
 # ============================================================================
-# MODEL LOADER (Singleton)
+# MODEL LOADER (Singleton with auto-fallback)
 # ============================================================================
 
 class ModelLoader:
-    """Lazy-loads the BLIP model on first use"""
-    _processor = None
+    """Lazy-loads vision model - Qwen2.5-VL-3B default, BLIP fallback"""
     _model = None
+    _processor = None
     _device = None
+    _model_type = None  # "qwen" or "blip"
+    
+    # Qwen prompt for concise sorting-friendly captions
+    QWEN_PROMPT = "Describe this image in 10-15 words for file organization. Focus on: main subject, image type (photo/screenshot/art/meme/diagram), and key details."
+    
+    @classmethod
+    def get_vram_gb(cls) -> float:
+        """Get available VRAM in GB"""
+        if torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            return props.total_memory / (1024**3)
+        return 0
     
     @classmethod
     def get_model(cls):
         if cls._model is None:
-            print("🔄 Loading BLIP model (first run only)...")
             cls._device = "cuda" if torch.cuda.is_available() else "cpu"
-            print(f"   Using device: {cls._device}")
+            vram = cls.get_vram_gb()
             
-            cls._processor = BlipProcessor.from_pretrained(
-                "Salesforce/blip-image-captioning-base",
-                use_fast=True
-            )
-            cls._model = BlipForConditionalGeneration.from_pretrained(
-                "Salesforce/blip-image-captioning-base"
-            ).to(cls._device)
+            print(f"   Device: {cls._device}")
+            if cls._device == "cuda":
+                print(f"   VRAM: {vram:.1f} GB")
             
-            print("✅ Model loaded!")
+            # Try Qwen first if we have enough VRAM (needs ~7GB)
+            if cls._device == "cuda" and vram >= 7:
+                try:
+                    cls._load_qwen()
+                    return cls._processor, cls._model, cls._device
+                except Exception as e:
+                    print(f"⚠️  Qwen failed to load: {e}")
+                    print("   Falling back to BLIP...")
+                    # Clear any partial load
+                    cls._model = None
+                    cls._processor = None
+                    torch.cuda.empty_cache()
+            
+            # Fallback to BLIP
+            cls._load_blip()
+        
         return cls._processor, cls._model, cls._device
+    
+    @classmethod
+    def _load_qwen(cls):
+        """Load Qwen2.5-VL-3B model"""
+        print("🔄 Loading Qwen2.5-VL-3B (high-quality captions)...")
+        
+        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+        
+        model_name = "Qwen/Qwen2.5-VL-3B-Instruct"
+        
+        cls._processor = AutoProcessor.from_pretrained(model_name)
+        cls._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+            device_map="auto"
+        )
+        cls._model_type = "qwen"
+        print("✅ Qwen2.5-VL-3B loaded!")
+    
+    @classmethod
+    def _load_blip(cls):
+        """Load BLIP model (fallback)"""
+        print("🔄 Loading BLIP (lightweight fallback)...")
+        
+        from transformers import BlipProcessor, BlipForConditionalGeneration
+        
+        cls._processor = BlipProcessor.from_pretrained(
+            "Salesforce/blip-image-captioning-base",
+            use_fast=True
+        )
+        cls._model = BlipForConditionalGeneration.from_pretrained(
+            "Salesforce/blip-image-captioning-base"
+        ).to(cls._device)
+        cls._model_type = "blip"
+        print("✅ BLIP loaded!")
+    
+    @classmethod
+    def get_model_type(cls) -> str:
+        """Return which model is loaded"""
+        return cls._model_type or "none"
 
 
 # ============================================================================
@@ -237,11 +301,16 @@ def clean_caption(caption: str) -> str:
     prefixes_to_remove = [
         "a ", "an ", "the ", "there is ", "this is ", 
         "a picture of ", "an image of ", "a photo of ",
-        "a photograph of ", "a screenshot of "
+        "a photograph of ", "a screenshot of ", "this image shows ",
+        "the image shows ", "this is an image of ", "this appears to be "
     ]
     for prefix in prefixes_to_remove:
         if clean.lower().startswith(prefix):
             clean = clean[len(prefix):]
+    
+    # Remove trailing punctuation
+    clean = clean.rstrip('.,;:!')
+    
     return clean
 
 
@@ -291,13 +360,64 @@ def get_image_files(source_dir: Path) -> list[Path]:
 
 
 def generate_caption(image: Image.Image) -> str:
-    """Generate a caption for the image using BLIP"""
+    """Generate a caption using the loaded model (Qwen or BLIP)"""
     processor, model, device = ModelLoader.get_model()
+    model_type = ModelLoader.get_model_type()
     
     if image.mode != "RGB":
         image = image.convert("RGB")
     
-    # Resize to BLIP's expected size - speedup for large images
+    if model_type == "qwen":
+        return _caption_with_qwen(image, processor, model)
+    else:
+        return _caption_with_blip(image, processor, model, device)
+
+
+def _caption_with_qwen(image: Image.Image, processor, model) -> str:
+    """Generate caption using Qwen2.5-VL"""
+    from qwen_vl_utils import process_vision_info
+    
+    # Resize for efficiency
+    image.thumbnail((768, 768))
+    
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": ModelLoader.QWEN_PROMPT}
+            ]
+        }
+    ]
+    
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    image_inputs, video_inputs = process_vision_info(messages)
+    
+    inputs = processor(
+        text=[text],
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors="pt"
+    ).to(model.device)
+    
+    with torch.no_grad():
+        output_ids = model.generate(
+            **inputs,
+            max_new_tokens=50,
+            do_sample=False
+        )
+    
+    # Decode only the new tokens
+    generated_ids = output_ids[:, inputs.input_ids.shape[1]:]
+    caption = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    
+    return caption.strip()
+
+
+def _caption_with_blip(image: Image.Image, processor, model, device: str) -> str:
+    """Generate caption using BLIP (fallback)"""
+    # Resize for efficiency
     image.thumbnail((384, 384))
     
     inputs = processor(image, return_tensors="pt").to(device)
@@ -305,7 +425,7 @@ def generate_caption(image: Image.Image) -> str:
     with torch.no_grad():
         output = model.generate(
             **inputs,
-            max_length=20,
+            max_length=30,
             num_beams=1,
             do_sample=False
         )
@@ -344,7 +464,7 @@ def classify_image(caption: str, filename: str, width: int, height: int) -> str:
             score += 2
         
         if category == "Screenshots":
-            if any(word in caption_lower for word in ["showing", "displaying", "view of"]):
+            if any(word in caption_lower for word in ["showing", "displaying", "view of", "interface", "window"]):
                 score += 1
         
         scores[category] = score
@@ -360,17 +480,17 @@ def classify_image(caption: str, filename: str, width: int, height: int) -> str:
 def analyze_image(filepath: Path) -> ImageAnalysis:
     """Perform full analysis on a single image"""
     try:
-        img = Image.open(filepath)
-        width, height = img.size
-        file_size = filepath.stat().st_size
+        with Image.open(filepath) as img:
+            width, height = img.size
+            file_size = filepath.stat().st_size
+            
+            if hasattr(img, 'n_frames') and img.n_frames > 1:
+                img.seek(0)
+            
+            # Make a copy for captioning (context manager will close original)
+            img_copy = img.copy()
         
-        if hasattr(img, 'n_frames') and img.n_frames > 1:
-            img.seek(0)
-        
-        caption = generate_caption(img)
-        
-        # Close file handle explicitly
-        img.close()
+        caption = generate_caption(img_copy)
         
         category = classify_image(caption, filepath.name, width, height)
         suggested_name, was_generic = generate_filename(caption, filepath)
@@ -465,7 +585,7 @@ def move_and_rename(analysis: ImageAnalysis, new_name: str, new_category: str) -
 
 
 # ============================================================================
-# BATCH PROCESSOR APP
+# BATCH PROCESSOR APP (for --review mode)
 # ============================================================================
 
 class BatchImageSorter:
@@ -508,11 +628,9 @@ class BatchImageSorter:
     
     def update_from_table(self, table_data) -> str:
         """Update analyses from edited table data"""
-        # Handle DataFrame or empty data
         if table_data is None:
             return "No data"
         
-        # Convert DataFrame to list if needed
         if hasattr(table_data, 'values'):
             table_data = table_data.values.tolist()
         
@@ -524,7 +642,6 @@ class BatchImageSorter:
         for i, row in enumerate(table_data):
             if i < len(page_data) and len(row) >= 4:
                 page_data[i].selected = bool(row[0])
-                # Update suggested name if changed (handle truncation)
                 if row[2] and not str(row[2]).endswith("..."):
                     page_data[i].suggested_name = str(row[2])
                 if row[3]:
@@ -565,39 +682,33 @@ class BatchImageSorter:
         return f"✅ Moved {success_count}, {fail_count} failed. {len(self.all_analyses)} remaining.", self.build_table_data()
     
     def select_all_page(self) -> list[list]:
-        """Select all on current page"""
         for analysis in self.get_page_data():
             if not analysis.error:
                 analysis.selected = True
         return self.build_table_data()
     
     def deselect_all_page(self) -> list[list]:
-        """Deselect all on current page"""
         for analysis in self.get_page_data():
             analysis.selected = False
         return self.build_table_data()
     
     def select_all(self) -> list[list]:
-        """Select ALL images"""
         for analysis in self.all_analyses:
             if not analysis.error:
                 analysis.selected = True
         return self.build_table_data()
     
     def next_page(self) -> tuple[str, list[list]]:
-        """Go to next page"""
         if self.current_page < self.get_total_pages() - 1:
             self.current_page += 1
         return f"Page {self.current_page + 1} of {self.get_total_pages()}", self.build_table_data()
     
     def prev_page(self) -> tuple[str, list[list]]:
-        """Go to previous page"""
         if self.current_page > 0:
             self.current_page -= 1
         return f"Page {self.current_page + 1} of {self.get_total_pages()}", self.build_table_data()
     
     def get_preview_image(self, evt) -> Optional[Image.Image]:
-        """Get preview image when row is clicked"""
         if evt.index[0] is not None:
             page_data = self.get_page_data()
             if evt.index[0] < len(page_data):
@@ -614,9 +725,10 @@ class BatchImageSorter:
         
         total = len(self.all_analyses)
         errors = sum(1 for a in self.all_analyses if a.error)
+        model_name = "Qwen2.5-VL-3B" if ModelLoader.get_model_type() == "qwen" else "BLIP"
         
-        with gr.Blocks(title="🖼️ Image Sorter v2") as app:
-            gr.Markdown("# 🖼️ Image Sorter v2\n*Review and organize your images*")
+        with gr.Blocks(title="🖼️ Image Sorter v3") as app:
+            gr.Markdown(f"# 🖼️ Image Sorter v3\n*Review and organize your images • Model: {model_name}*")
             gr.Markdown(f"**Source:** `{SOURCE_DIR}`  →  **Destination:** `{DEST_BASE}`")
             gr.Markdown(f"✅ **{total} images analyzed** ({errors} errors) - Ready for review!")
             
@@ -653,12 +765,7 @@ class BatchImageSorter:
                     gr.Markdown("### Categories\n" + 
                                "\n".join([f"- {cat}" for cat in CATEGORY_LIST]))
             
-            # Event handlers
-            table.select(
-                fn=self.get_preview_image,
-                outputs=[preview_image]
-            )
-            
+            table.select(fn=self.get_preview_image, outputs=[preview_image])
             prev_btn.click(fn=self.prev_page, outputs=[page_label, table])
             next_btn.click(fn=self.next_page, outputs=[page_label, table])
             select_all_page_btn.click(fn=self.select_all_page, outputs=[table])
@@ -673,7 +780,6 @@ class BatchImageSorter:
                 outputs=[page_label]
             )
             
-            # Load initial data on startup
             app.load(
                 fn=lambda: (self.build_table_data(), f"Page 1 of {self.get_total_pages()}"),
                 outputs=[table, page_label]
@@ -691,28 +797,27 @@ def generate_html_report(
     start_time: datetime,
     end_time: datetime,
     total_analyzed: int,
-    errors: int
+    errors: int,
+    model_type: str
 ) -> str:
     """Generate an HTML report of the sorting operation"""
     
     duration = (end_time - start_time).total_seconds()
     moved_count = sum(1 for r in results if r.get('success'))
     failed_count = sum(1 for r in results if not r.get('success'))
+    model_name = "Qwen2.5-VL-3B" if model_type == "qwen" else "BLIP"
     
-    # Count by category
     category_counts = {}
     for r in results:
         if r.get('success'):
             cat = r.get('category', 'Unknown')
             category_counts[cat] = category_counts.get(cat, 0) + 1
     
-    # Build category breakdown HTML
     category_html = ""
     for cat in sorted(category_counts.keys()):
         count = category_counts[cat]
         category_html += f"<tr><td>{cat}</td><td>{count}</td></tr>\n"
     
-    # Build results table HTML
     results_html = ""
     for r in results:
         status = "✅" if r.get('success') else "❌"
@@ -754,6 +859,15 @@ def generate_html_report(
         .container {{ max-width: 1400px; margin: 0 auto; }}
         h1 {{ color: var(--accent); margin-bottom: 0.5rem; }}
         .subtitle {{ color: var(--muted); margin-bottom: 2rem; }}
+        .model-badge {{ 
+            display: inline-block;
+            background: var(--accent);
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }}
         .stats {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -783,7 +897,7 @@ def generate_html_report(
 </head>
 <body>
     <div class="container">
-        <h1>🖼️ Image Sorter Report</h1>
+        <h1>🖼️ Image Sorter Report <span class="model-badge">{model_name}</span></h1>
         <p class="subtitle">{start_time.strftime('%B %d, %Y at %I:%M %p')}</p>
         
         <div class="paths">
@@ -836,7 +950,7 @@ def generate_html_report(
         </div>
         
         <p style="color: var(--muted); text-align: center; margin-top: 2rem;">
-            Generated by Image Sorter v2.1<br>
+            Generated by Image Sorter v3.0<br>
             &copy; 2025 Swift Innovate • MIT License • 
             <a href="https://github.com/swift-innovate/image-sorter" style="color: var(--accent);">GitHub</a>
         </p>
@@ -853,7 +967,7 @@ def generate_html_report(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AI-powered image sorter using local BLIP model",
+        description="AI-powered image sorter using Qwen2.5-VL (BLIP fallback)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -871,7 +985,7 @@ Examples:
     mode = "Review" if args.review else "Dry Run" if args.dry_run else "Auto"
     
     print("=" * 60)
-    print(f"🖼️  IMAGE SORTER v2.1 - {mode} Mode")
+    print(f"🖼️  IMAGE SORTER v3.0 - {mode} Mode")
     print("=" * 60)
     print(f"Source:      {SOURCE_DIR}")
     print(f"Destination: {DEST_BASE}")
@@ -882,11 +996,12 @@ Examples:
     start_time = datetime.now()
     
     # =========================================
-    # PHASE 1: Analyze all images
+    # PHASE 1: Load model and analyze
     # =========================================
-    print("\n🧠 Loading BLIP model...")
+    print("\n🧠 Loading vision model...")
     ModelLoader.get_model()
-    print("✅ Model loaded!\n")
+    model_type = ModelLoader.get_model_type()
+    print()
     
     image_files = get_image_files(SOURCE_DIR)
     total = len(image_files)
@@ -924,7 +1039,6 @@ Examples:
     # =========================================
     
     if args.dry_run:
-        # Dry run - just show what would happen
         print("\n📋 DRY RUN - No files moved")
         print("\nCategory breakdown:")
         categories = {}
@@ -936,7 +1050,6 @@ Examples:
         return
     
     if args.review:
-        # Review mode - launch Gradio UI (lazy import)
         try:
             import gradio as gr
         except ImportError:
@@ -953,13 +1066,15 @@ Examples:
         ui.launch(inbrowser=True)
         return
     
-    # Default: Auto mode - move everything, generate report
+    # Default: Auto mode
     print("\n📦 Moving images...")
     print("-" * 40)
     
     results = []
     moveable = [a for a in all_analyses if not a.error]
+    errored = [a for a in all_analyses if a.error]
     
+    # Move good files
     for i, analysis in enumerate(moveable):
         success, msg = move_and_rename(analysis, analysis.suggested_name, analysis.category)
         
@@ -975,23 +1090,48 @@ Examples:
         status = "✅" if success else "❌"
         print(f"  {status} [{i + 1}/{len(moveable)}] {analysis.filepath.name[:40]}")
     
-    # Add analysis errors to results
-    for a in all_analyses:
-        if a.error:
-            results.append({
-                'success': False,
-                'original': a.filepath.name,
-                'new_name': '',
-                'category': '',
-                'caption': '',
-                'error': a.error
-            })
+    # Move corrupt files to Errors folder
+    if errored:
+        print(f"\n🗑️  Moving {len(errored)} corrupt files to Errors/...")
+        error_dir = DEST_BASE / "Errors"
+        error_dir.mkdir(parents=True, exist_ok=True)
+        
+        for a in errored:
+            try:
+                dest_path = error_dir / a.filepath.name
+                counter = 1
+                while dest_path.exists():
+                    stem = a.filepath.stem
+                    ext = a.filepath.suffix
+                    dest_path = error_dir / f"{stem}_{counter}{ext}"
+                    counter += 1
+                
+                shutil.move(str(a.filepath), str(dest_path))
+                print(f"    🗑️  {a.filepath.name[:50]}")
+                
+                results.append({
+                    'success': False,
+                    'original': a.filepath.name,
+                    'new_name': dest_path.name,
+                    'category': 'Errors',
+                    'caption': '',
+                    'error': a.error
+                })
+            except Exception as e:
+                print(f"    ❌ Failed to move {a.filepath.name}: {e}")
+                results.append({
+                    'success': False,
+                    'original': a.filepath.name,
+                    'new_name': '',
+                    'category': '',
+                    'caption': '',
+                    'error': f"{a.error} | Move failed: {e}"
+                })
     
     end_time = datetime.now()
     
-    # Generate HTML report
     print("\n📊 Generating report...")
-    html = generate_html_report(results, start_time, end_time, total, analysis_errors)
+    html = generate_html_report(results, start_time, end_time, total, analysis_errors, model_type)
     
     report_name = f"image_sorter_{start_time.strftime('%Y-%m-%d_%H%M%S')}.html"
     report_path = DEST_BASE / report_name

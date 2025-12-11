@@ -6,163 +6,55 @@
 # Copy this file to config.yaml and edit with your paths
 # ============================================================
 
-# Source folder - where to scan for images
-source_dir: "C:\\Users\\YourName\\Downloads"
+# Folder paths - CHANGE THESE TO YOUR PATHS
+source_dir: ""  # e.g., "C:\\Users\\YourName\\Downloads"
+dest_dir: ""    # e.g., "C:\\Users\\YourName\\Pictures\\Sorted"
 
-# Destination folder - where sorted images go (subfolders created per category)
-dest_dir: "C:\\Users\\YourName\\Pictures\\Sorted"
-
-# ============================================================
-# UI Settings
-# ============================================================
-
-# Images per page in review mode
+# UI settings
 page_size: 15
-
-# Max filename length (Windows path limit protection)
 max_filename_length: 120
 
-# ============================================================
-# Categories
-# ============================================================
-# Each category has:
-#   - keywords: words to look for in AI-generated captions
-#   - patterns: patterns to match in original filenames
-#
-# Images are scored against all categories, highest score wins
-# "Misc" is the fallback for uncategorized images
-
+# Categories - keywords match against AI captions, patterns match filenames
+# Qwen2.5-VL produces detailed captions like:
+#   "screenshot of VS Code with Python error in dark terminal"
+#   "meme with text overlay showing cat reaction"
+#   "digital art of cyberpunk city at night"
 categories:
   Screenshots:
-    keywords: 
-      - screenshot
-      - screen
-      - desktop
-      - window
-      - browser
-      - code
-      - terminal
-      - interface
-      - menu
-      - dialog
-    patterns:
-      - Screenshot
-      - Capture
-      - Snip
-      - Screen Shot
-
-  Photos:
-    keywords:
-      - photo
-      - photograph
-      - portrait
-      - landscape
-      - nature
-      - selfie
-      - people
-      - outdoor
-      - indoor
-    patterns:
-      - IMG_
-      - DSC
-      - DCIM
-      - PXL_
-      - Photo
-
+    keywords: [screenshot, screen, desktop, window, browser, code, terminal, error, ui, interface, dialog, menu, settings, notification]
+    patterns: [Screenshot, Capture, Snip, Screen]
   AI_Generated:
-    keywords:
-      - digital art
-      - fantasy
-      - surreal
-      - cyberpunk
-      - sci-fi
-      - concept art
-      - illustration
-      - render
-      - artistic
-    patterns:
-      - DALL
-      - Midjourney
-      - Stable
-      - ComfyUI
-      - ChatGPT Image
-      - HiDream
-      - Gemini_Generated
-
+    keywords: [digital art, fantasy, surreal, cyberpunk, sci-fi, concept art, rendered, illustration, artistic, generated, stylized, 3d render]
+    patterns: [DALL, Midjourney, Stable, ComfyUI, Leonardo, Flux]
+  Photos:
+    keywords: [photo, photograph, portrait, landscape, nature, selfie, camera, outdoor, indoor, person, people, animal, dog, cat, food, travel]
+    patterns: [IMG_, DSC, DCIM, PXL_, PHOTO]
   Memes:
-    keywords:
-      - meme
-      - funny
-      - comic
-      - cartoon
-      - reaction
-      - humor
-    patterns:
-      - meme
-      - reaction
-      - funny
-
+    keywords: [meme, funny, comic, cartoon, reaction, humor, joke, text overlay, caption, twitter, reddit]
+    patterns: [meme, reaction, funny]
   Documents:
-    keywords:
-      - document
-      - text
-      - chart
-      - graph
-      - diagram
-      - table
-      - spreadsheet
-      - form
-    patterns:
-      - doc
-      - scan
-      - pdf
-      - form
-
+    keywords: [document, text, chart, graph, diagram, infographic, table, data, spreadsheet, presentation, slide, pdf, report, form]
+    patterns: [doc, scan, pdf, report]
   Icons_Logos:
-    keywords:
-      - icon
-      - logo
-      - symbol
-      - badge
-      - emblem
-      - brand
-    patterns:
-      - icon
-      - logo
-      - favicon
-      - badge
-
+    keywords: [icon, logo, symbol, badge, brand, emblem, app icon, favicon, trademark]
+    patterns: [icon, logo, favicon, brand]
   Wallpapers:
-    keywords:
-      - wallpaper
-      - background
-      - panorama
-      - scenic
-      - landscape
-    patterns:
-      - wallpaper
-      - background
-      - 1920
-      - 4k
-
+    keywords: [wallpaper, background, panorama, scenic, abstract background, desktop background, 4k, ultrawide]
+    patterns: [wallpaper, background, wall]
   Misc:
     keywords: []
     patterns: []
 
-# ============================================================
-# Generic Filename Patterns (regex)
-# ============================================================
-# Files matching these patterns get fully renamed with AI caption
-# Files NOT matching keep their original name + AI enhancement
-
+# Generic filename patterns (regex) - images matching these get renamed
 generic_patterns:
   - '^IMG[_-]?\d+'
   - '^DSC[_-]?\d+'
   - '^Screenshot[_ ]?\d*'
   - '^PXL_\d+'
   - '^\d+$'
-  - '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
-  - '^[a-f0-9]{32,}$'
-  - '^image[_ ]?\(\d+\)$'
-  - '^download[_ ]?\(\d+\)$'
   - '^\d{10,}'
+  - '^image[_-]?\d*'
+  - '^photo[_-]?\d*'
+  - '^ChatGPT.*Image'
+  - '^DALL.E'
+  - '^download'
